@@ -1,0 +1,236 @@
+#!/bin/bash
+
+# XTF - script for preprocessing logs from cryptocurrency exchange.
+# First IOS project with premium functionality.
+# Author: Ondřej Vomáčka (xvomaco00)
+
+export POSIXLY_CORRECT=yes
+export LC_ALL=C
+
+# CONSTANTS
+
+LIST_MODE="list"
+STATUS_MODE="status"
+PROFIT_MODE="profit"
+LIST_CURRENCY_MODE="list-currency"
+DATE_FORMAT="+%Y-%m-%d %T"
+
+# Handle XTF_PROFIT
+XTF_PROFIT=$(printenv XTF_PROFIT)
+if [[ $XTF_PROFIT == "" ]]; then
+  XTF_PROFIT=20
+fi
+
+# VARIABLES
+
+user=""
+mode=""
+after=""
+before=""
+logFiles=()
+currencies=()
+
+function print_help() {
+	echo "PROGRAM"
+	echo "	xtf - script for preprocessing logs from your cryptocurrency exchange."
+	echo
+	echo "USAGE"
+	echo "	$0 [-h|--help] [FILTER] [COMMAND] USER LOG [LOG2] [...]"
+	echo
+	echo "OPTIONS"
+	echo "	A COMMAND can be one of the following:"
+	echo "		list – listing of records for the user."
+  echo "		list-currency – listing of sorted list of occurring currencies."
+  echo "		status – statement of actual account balances grouped and sorted by currency."
+  echo "		profit – the customer's account statement with the fictitious return included."
+	echo
+	echo "	FILTER can be a combination of the following:"
+	echo "		-a DATETIME – after: only records AFTER this date and time (without it) are considered."
+	echo "			DATETIME is of format YYYY-MM-DD HH:MM:SS."
+  echo "		-b DATETIME – before: only records BEFORE this date and time (without it) are considered."
+  echo "			DATETIME is of format YYYY-MM-DD HH:MM:SS."
+  echo "		-c CURRENCY – only records corresponding to a given currency are considered."
+	echo
+	echo "	-h and --help displays help with a short description of each command and option."
+	echo
+}
+
+function print_error() {
+	>&2 echo "$1"
+}
+
+function check_date() {
+  if [[ ! $1 =~ ^[0-9]{4}-[0-1][0-9]-[0-3][0-9]\ [0-2][0-9]:[0-5][0-9]:[0-5][0-9]$ ]]; then
+    return 1
+  fi
+  date -u -d "$1" +"$DATE_FORMAT" > /dev/null  2>&1
+}
+
+function date_to_unix() {
+    date -d "$1" +"%s"
+}
+
+# PARSE ARGUMENTS
+
+argumentAdded=0
+
+for (( i=1; i<=$#; i++ )); do
+  if [[ ${!i} = "-h" || ${!i} = "--help" ]]; then
+    print_help
+    exit 0
+  elif [[
+    ${!i} == "$LIST_MODE" || ${!i} == "$LIST_CURRENCY_MODE" || ${!i} == "$STATUS_MODE" || ${!i} == "$PROFIT_MODE"
+  ]]; then
+    if [[ $mode != "" ]]; then
+      print_error "ERROR: two or more commands were provided."
+      exit 1
+    else
+      mode=${!i}
+    fi
+    argumentAdded=1
+  elif [[ ${!i} == "-a" ]]; then
+    i=$((i+1)); after=${!i}; argumentAdded=1
+  elif [[ ${!i} == "-b" ]]; then
+    i=$((i+1)); before=${!i}; argumentAdded=1
+  elif [[ ${!i} == "-c" ]]; then
+    i=$((i+1)); currencies+=("${!i}"); argumentAdded=1
+  elif [[ $user == "" ]]; then user=${!i}
+  else logFiles+=("${!i}")
+  fi
+
+  if [[ ${#logFiles[@]} != 0 && $argumentAdded == 1 ]]; then
+    print_error "ERROR: arguments were provided after log files."
+    exit 1
+  fi
+  argumentAdded=0
+done
+
+if [[ $mode == "" ]]; then
+  mode="$LIST_MODE"
+fi
+
+# VALIDATE ARGUMENTS
+
+# Check if required arguments were provided
+if [[ $# -lt 2 || $user == "" || ${#logFiles[@]} == 0 ]]; then
+  print_error "ERROR: required arguments were not provided."
+  print_error "Run \"$0 --help\" to show correct usage."
+  exit 1
+fi
+
+# Check if log files exist and are readable
+for file in "${logFiles[@]}"
+do
+  if [[ ! -f $file ]] || [[ ! -r $file ]]; then
+    print_error "ERROR: file \"$file\" does not exist or is not readable."
+    exit 1
+  fi
+done
+
+# Check if after filter is valid date
+check_date "$after"
+isDateInvalid=$?
+after_unix=""
+
+if [[ $after != "" && $isDateInvalid == 1 ]]; then
+  print_error "ERROR: invalid date format for after filter \"$after\"."
+  exit 1
+else
+  after_unix=$(date_to_unix "$after")
+fi
+
+# Check if before filter is valid date
+check_date "$before"
+isDateInvalid=$?
+before_unix=""
+
+if [[ $before != "" && $isDateInvalid == 1 ]]; then
+  print_error "ERROR: invalid date format for before filter \"$before\"."
+  exit 1
+else
+  before_unix=$(date_to_unix "$before")
+fi
+
+# BUILD COMMAND
+
+command=(zcat -f)
+
+for logName in "${logFiles[@]}"; do command+=("\"$logName\""); done
+
+command+=("| grep \"^$user;\"")
+
+if [[ ${#currencies[@]} != 0 ]]; then
+  expression=""
+  separator=""
+  for currency in "${currencies[@]}"; do expression="$expression$separator;$currency;"; separator="|"; done
+  command+=("| grep -E \"$expression\"")
+fi
+
+if [[ $mode != "$LIST_MODE" ]]; then
+  command+=("| sort -t \";\" -k 3")
+fi
+
+# echo "${command[*]}"
+
+logFormat="^.+;[0-9]{4}-[0-1][0-9]-[0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-5][0-9];.+;\-?[0-9]+\.?[0-9]*$"
+
+# ITERATE OVER LOG ENTRIES
+
+lastCurrency=""
+currencyStatus=0
+
+while IFS= read -r line
+do
+  IFS=";"
+  entry=()
+  for i in $line; do entry+=("$i") ; done
+
+  currentDateEntry="${entry[1]}";currentCurrencyEntry="${entry[2]}";currentAmountEntry="${entry[3]}"
+
+  check_date "$currentDateEntry"
+  isDateInvalid=$?
+
+  # Check if log entry is valid
+  if [[ ! $line =~ $logFormat ]] || [[ $isDateInvalid == 1 ]]; then
+    print_error "ERROR: invalid data found: \"$line\"."
+    exit 1
+  fi
+
+  # Check if date is after the after filter
+  if [[ $after != "" && $(date_to_unix "$currentDateEntry") -le $after_unix ]]; then
+    continue
+  fi
+
+  # Check if date is before the before filter
+  if [[ $before != "" && $(date_to_unix "$currentDateEntry") -ge $before_unix ]]; then
+    continue
+  fi
+
+  # PRINT LOG ENTRY
+
+  if [[ $mode == "$LIST_MODE" ]]; then
+    echo "$line"
+  elif [[ $mode == "$LIST_CURRENCY_MODE" && $lastCurrency != "$currentCurrencyEntry" ]]; then
+    echo "$currentCurrencyEntry"
+  elif [[ $mode == "$STATUS_MODE" || $mode == "$PROFIT_MODE" ]]; then
+    if [[ $lastCurrency != "" && $lastCurrency != "$currentCurrencyEntry" ]]; then
+      if [[ $mode == "$PROFIT_MODE" && $(echo "if ($currencyStatus > 0) 1" | bc) -eq 1 ]]; then
+        currencyStatus=$(echo "scale=4; $currencyStatus + $currencyStatus * ($XTF_PROFIT / 100)" | bc)
+      fi
+      echo "$lastCurrency : $currencyStatus"
+      currencyStatus=0
+    fi
+    currencyStatus=$(echo "scale=4; $currencyStatus + $currentAmountEntry" | bc)
+  fi
+
+  lastCurrency=$currentCurrencyEntry
+done < <(eval "${command[*]}")
+
+# PRINT LAST ENTRY OUTSIDE OF LOOP
+
+if [[ $lastCurrency != "" ]] && { [[ $mode == "$STATUS_MODE" ]] || [[ $mode == "$PROFIT_MODE" ]]; }; then
+  if [[ $mode == "$PROFIT_MODE" && $(echo "if ($currencyStatus > 0) 1" | bc) -eq 1 ]]; then
+    currencyStatus=$(echo "scale=4; $currencyStatus + $currencyStatus * ($XTF_PROFIT / 100)" | bc)
+  fi
+  echo "$lastCurrency : $currencyStatus"
+fi
