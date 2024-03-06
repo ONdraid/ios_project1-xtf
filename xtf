@@ -41,33 +41,33 @@ currencies=()
 
 # Prints help with a short description of each command and option.
 function print_help() {
-	echo "PROGRAM"
-	echo "	xtf - script for preprocessing logs from your cryptocurrency exchange."
-	echo
-	echo "USAGE"
-	echo "	$0 [-h|--help] [FILTER] [COMMAND] USER LOG [LOG2] [...]"
-	echo
-	echo "OPTIONS"
-	echo "	A COMMAND can be one of the following:"
-	echo "		list – listing of records for the user."
+  echo "PROGRAM"
+  echo "	xtf - script for preprocessing logs from your cryptocurrency exchange."
+  echo
+  echo "USAGE"
+  echo "	$0 [-h|--help] [FILTER] [COMMAND] USER LOG [LOG2] [...]"
+  echo
+  echo "OPTIONS"
+  echo "	A COMMAND can be one of the following:"
+  echo "		list – listing of records for the user."
   echo "		list-currency – listing of sorted list of occurring currencies."
   echo "		status – statement of actual account balances grouped and sorted by currency."
   echo "		profit – the customer's account statement with the fictitious return included."
-	echo
-	echo "	FILTER can be a combination of the following:"
-	echo "		-a DATETIME – after: only records AFTER this date and time (without it) are considered."
-	echo "			DATETIME is of format YYYY-MM-DD HH:MM:SS."
+  echo
+  echo "	FILTER can be a combination of the following:"
+  echo "		-a DATETIME – after: only records AFTER this date and time (without it) are considered."
+  echo "			DATETIME is of format YYYY-MM-DD HH:MM:SS."
   echo "		-b DATETIME – before: only records BEFORE this date and time (without it) are considered."
   echo "			DATETIME is of format YYYY-MM-DD HH:MM:SS."
   echo "		-c CURRENCY – only records corresponding to a given currency are considered."
-	echo
-	echo "	-h and --help displays help with a short description of each command and option."
-	echo
+  echo
+  echo "	-h and --help displays help with a short description of each command and option."
+  echo
 }
 
 # Prints given message to stderr.
 function print_error() {
-	>&2 echo "$1"
+  >&2 echo "$1"
 }
 
 # Checks if date is in format YYYY-MM-DD HH:MM:SS
