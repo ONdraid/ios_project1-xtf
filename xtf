@@ -7,13 +7,14 @@
 export POSIXLY_CORRECT=yes
 export LC_ALL=C
 
-# CONSTANTS
+### CONSTANTS ######################################################################################################
 
+# Format for the date command.
+DATE_FORMAT="+%Y-%m-%d %T"
 LIST_MODE="list"
 STATUS_MODE="status"
 PROFIT_MODE="profit"
 LIST_CURRENCY_MODE="list-currency"
-DATE_FORMAT="+%Y-%m-%d %T"
 
 # Handle XTF_PROFIT
 XTF_PROFIT=$(printenv XTF_PROFIT)
@@ -21,15 +22,24 @@ if [[ $XTF_PROFIT == "" ]]; then
   XTF_PROFIT=20
 fi
 
-# VARIABLES
+### VARIABLES ######################################################################################################
 
+# User to filter logs for.
 user=""
+# Aka which command to execute.
 mode=""
+# Date to filter logs after.
 after=""
+# Date to filter logs before.
 before=""
+# Array of log files.
 logFiles=()
+# Array of currencies to filter logs for.
 currencies=()
 
+### FUNCTIONS ######################################################################################################
+
+# Prints help with a short description of each command and option.
 function print_help() {
 	echo "PROGRAM"
 	echo "	xtf - script for preprocessing logs from your cryptocurrency exchange."
@@ -55,10 +65,12 @@ function print_help() {
 	echo
 }
 
+# Prints given message to stderr.
 function print_error() {
 	>&2 echo "$1"
 }
 
+# Checks if date is in format YYYY-MM-DD HH:MM:SS
 function check_date() {
   if [[ ! $1 =~ ^[0-9]{4}-[0-1][0-9]-[0-3][0-9]\ [0-2][0-9]:[0-5][0-9]:[0-5][0-9]$ ]]; then
     return 1
@@ -66,14 +78,17 @@ function check_date() {
   date -u -d "$1" +"$DATE_FORMAT" > /dev/null  2>&1
 }
 
+# Converts human readable date to unix timestamp.
 function date_to_unix() {
     date -d "$1" +"%s"
 }
 
-# PARSE ARGUMENTS
+### PARSE ARGUMENTS ################################################################################################
 
+# Flag representing if argument was added during iteration.
 argumentAdded=0
 
+# Iterate over arguments.
 for (( i=1; i<=$#; i++ )); do
   if [[ ${!i} = "-h" || ${!i} = "--help" ]]; then
     print_help
@@ -98,6 +113,7 @@ for (( i=1; i<=$#; i++ )); do
   else logFiles+=("${!i}")
   fi
 
+  # Check whenever arguments were provided after log files.
   if [[ ${#logFiles[@]} != 0 && $argumentAdded == 1 ]]; then
     print_error "ERROR: arguments were provided after log files."
     exit 1
@@ -109,7 +125,7 @@ if [[ $mode == "" ]]; then
   mode="$LIST_MODE"
 fi
 
-# VALIDATE ARGUMENTS
+### VALIDATE ARGUMENTS #############################################################################################
 
 # Check if required arguments were provided
 if [[ $# -lt 2 || $user == "" || ${#logFiles[@]} == 0 ]]; then
@@ -151,46 +167,45 @@ else
   before_unix=$(date_to_unix "$before")
 fi
 
-# BUILD COMMAND
+### BUILD COMMAND ##################################################################################################
 
-command=(zcat -f)
+command=(zcat -f) # zcat -f will read both compressed and uncompressed files
 
-for logName in "${logFiles[@]}"; do command+=("\"$logName\""); done
+for logName in "${logFiles[@]}"; do command+=("\"$logName\""); done # add log files to the zcat command
 
-command+=("| grep \"^$user;\"")
+command+=("| grep \"^$user;\"") # pipe zcat to grep, which will filter logs for the user
 
 if [[ ${#currencies[@]} != 0 ]]; then
   expression=""
   separator=""
   for currency in "${currencies[@]}"; do expression="$expression$separator;$currency;"; separator="|"; done
-  command+=("| grep -E \"$expression\"")
+  command+=("| grep -E \"$expression\"") # additionally filter logs for the given currencies
 fi
 
 if [[ $mode != "$LIST_MODE" ]]; then
-  command+=("| sort -t \";\" -k 3")
+  command+=("| sort -t \";\" -k 3") # and sort logs by currency for all modes except list
 fi
 
-# echo "${command[*]}"
-
-logFormat="^.+;[0-9]{4}-[0-1][0-9]-[0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-5][0-9];.+;\-?[0-9]+\.?[0-9]*$"
-
-# ITERATE OVER LOG ENTRIES
+### ITERATE OVER LOG ENTRIES #######################################################################################
 
 lastCurrency=""
+# Current amount of currency.
 currencyStatus=0
+# Regex format of log entries.
+logFormat="^.+;[0-9]{4}-[0-1][0-9]-[0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-5][0-9];.+;\-?[0-9]+\.?[0-9]*$"
 
-while IFS= read -r line
+while IFS= read -r line # read log entries (lines) from the command
 do
   IFS=";"
   entry=()
-  for i in $line; do entry+=("$i") ; done
+  for i in $line; do entry+=("$i") ; done # assign entry values to variables for better readability
 
   currentDateEntry="${entry[1]}";currentCurrencyEntry="${entry[2]}";currentAmountEntry="${entry[3]}"
 
   check_date "$currentDateEntry"
   isDateInvalid=$?
 
-  # Check if log entry is valid
+  # Check if the log entry is valid
   if [[ ! $line =~ $logFormat ]] || [[ $isDateInvalid == 1 ]]; then
     print_error "ERROR: invalid data found: \"$line\"."
     exit 1
@@ -206,18 +221,20 @@ do
     continue
   fi
 
-  # PRINT LOG ENTRY
+  ### PRINT LOG ENTRY ##############################################################################################
 
   if [[ $mode == "$LIST_MODE" ]]; then
-    echo "$line"
+    echo "$line" # just print the log entry for list mode
   elif [[ $mode == "$LIST_CURRENCY_MODE" && $lastCurrency != "$currentCurrencyEntry" ]]; then
-    echo "$currentCurrencyEntry"
+    echo "$currentCurrencyEntry" # just print the currency for list-currency mode
   elif [[ $mode == "$STATUS_MODE" || $mode == "$PROFIT_MODE" ]]; then
+    # If the currency has changed, print the last currency and reset the currency status.
     if [[ $lastCurrency != "" && $lastCurrency != "$currentCurrencyEntry" ]]; then
+      # If the mode is profit and the currency status is positive, add the totally legit profit.
       if [[ $mode == "$PROFIT_MODE" && $(echo "if ($currencyStatus > 0) 1" | bc) -eq 1 ]]; then
         currencyStatus=$(echo "scale=4; $currencyStatus + $currencyStatus * ($XTF_PROFIT / 100)" | bc)
       fi
-      echo "$lastCurrency : $currencyStatus"
+      echo "$lastCurrency : $currencyStatus" # print the last currency and its status
       currencyStatus=0
     fi
     currencyStatus=$(echo "scale=4; $currencyStatus + $currentAmountEntry" | bc)
@@ -226,7 +243,7 @@ do
   lastCurrency=$currentCurrencyEntry
 done < <(eval "${command[*]}")
 
-# PRINT LAST ENTRY OUTSIDE OF LOOP
+### PRINT LAST ENTRY OUTSIDE OF LOOP ###############################################################################
 
 if [[ $lastCurrency != "" ]] && { [[ $mode == "$STATUS_MODE" ]] || [[ $mode == "$PROFIT_MODE" ]]; }; then
   if [[ $mode == "$PROFIT_MODE" && $(echo "if ($currencyStatus > 0) 1" | bc) -eq 1 ]]; then
