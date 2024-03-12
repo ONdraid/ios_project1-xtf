@@ -199,7 +199,7 @@ logFormat="^.+;[0-9]{4}-[0-1][0-9]-[0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-5][0-9];.
 
 while IFS= read -r line # read log entries (lines) from the command
 do
-  IFS=";"
+  IFS=";" # set delimiter to semicolon / split the line by semicolon
   entry=()
   for i in $line; do entry+=("$i") ; done # assign entry values to variables for better readability
 
@@ -209,7 +209,7 @@ do
   isDateInvalid=$?
 
   # Check if the log entry is valid.
-  if [[ ! $line =~ $logFormat ]] || [[ $isDateInvalid == 1 ]]; then
+  if [[ ! $line =~ $logFormat || $isDateInvalid == 1 ]]; then
     print_error "ERROR: invalid data found: \"$line\"."
     exit 1
   fi
