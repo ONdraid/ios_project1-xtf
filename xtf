@@ -17,6 +17,8 @@ STATUS_MODE="status"
 PROFIT_MODE="profit"
 LIST_CURRENCY_MODE="list-currency"
 
+DEFAULT_MODE="$LIST_MODE"
+
 # Handle XTF_PROFIT
 XTF_PROFIT=$(printenv XTF_PROFIT)
 if [[ $XTF_PROFIT == "" ]]; then
@@ -91,27 +93,27 @@ argumentAdded=0
 
 # Iterate over arguments.
 for (( i=1; i<=$#; i++ )); do
-  if [[ ${!i} = "-h" || ${!i} = "--help" ]]; then
+  if [[ ${!i} = "-h" || ${!i} = "--help" ]]; then # print help and exit
     print_help
     exit 0
   elif [[
     ${!i} == "$LIST_MODE" || ${!i} == "$LIST_CURRENCY_MODE" || ${!i} == "$STATUS_MODE" || ${!i} == "$PROFIT_MODE"
-  ]]; then
-    if [[ $mode != "" ]]; then
+  ]]; then # set mode / command
+    if [[ $mode != "" ]]; then # exit if mode was already set
       print_error "ERROR: two or more commands were provided."
       exit 1
     else
       mode=${!i}
     fi
     argumentAdded=1
-  elif [[ ${!i} == "-a" ]]; then
+  elif [[ ${!i} == "-a" ]]; then # set after filter
     i=$((i+1)); after=${!i}; argumentAdded=1
-  elif [[ ${!i} == "-b" ]]; then
+  elif [[ ${!i} == "-b" ]]; then # set before filter
     i=$((i+1)); before=${!i}; argumentAdded=1
-  elif [[ ${!i} == "-c" ]]; then
+  elif [[ ${!i} == "-c" ]]; then # add currency to filter
     i=$((i+1)); currencies+=("${!i}"); argumentAdded=1
-  elif [[ $user == "" ]]; then user=${!i}
-  else logFiles+=("${!i}")
+  elif [[ $user == "" ]]; then user=${!i} # set user
+  else logFiles+=("${!i}") # else add log file
   fi
 
   # Check whenever arguments were provided after log files.
@@ -122,8 +124,8 @@ for (( i=1; i<=$#; i++ )); do
   argumentAdded=0
 done
 
-if [[ $mode == "" ]]; then
-  mode="$LIST_MODE"
+if [[ $mode == "" ]]; then # set default mode
+  mode="$DEFAULT_MODE"
 fi
 
 ### VALIDATE ARGUMENTS #############################################################################################
