@@ -3,6 +3,7 @@
 # XTF - script for preprocessing logs from cryptocurrency exchange.
 # First IOS project with premium functionality.
 # Author: Ondřej Vomáčka (xvomaco00)
+# Date: 2024-03-06
 
 export POSIXLY_CORRECT=yes
 export LC_ALL=C
@@ -127,14 +128,14 @@ fi
 
 ### VALIDATE ARGUMENTS #############################################################################################
 
-# Check if required arguments were provided
+# Check if required arguments were provided.
 if [[ $# -lt 2 || $user == "" || ${#logFiles[@]} == 0 ]]; then
   print_error "ERROR: required arguments were not provided."
   print_error "Run \"$0 --help\" to show correct usage."
   exit 1
 fi
 
-# Check if log files exist and are readable
+# Check if log files exist and are readable.
 for file in "${logFiles[@]}"
 do
   if [[ ! -f $file ]] || [[ ! -r $file ]]; then
@@ -143,7 +144,7 @@ do
   fi
 done
 
-# Check if after filter is valid date
+# Check if after filter is valid date.
 check_date "$after"
 isDateInvalid=$?
 after_unix=""
@@ -155,7 +156,7 @@ else
   after_unix=$(date_to_unix "$after")
 fi
 
-# Check if before filter is valid date
+# Check if before filter is valid date.
 check_date "$before"
 isDateInvalid=$?
 before_unix=""
@@ -205,18 +206,18 @@ do
   check_date "$currentDateEntry"
   isDateInvalid=$?
 
-  # Check if the log entry is valid
+  # Check if the log entry is valid.
   if [[ ! $line =~ $logFormat ]] || [[ $isDateInvalid == 1 ]]; then
     print_error "ERROR: invalid data found: \"$line\"."
     exit 1
   fi
 
-  # Check if date is after the after filter
+  # Check if date is after the after filter.
   if [[ $after != "" && $(date_to_unix "$currentDateEntry") -le $after_unix ]]; then
     continue
   fi
 
-  # Check if date is before the before filter
+  # Check if date is before the before filter.
   if [[ $before != "" && $(date_to_unix "$currentDateEntry") -ge $before_unix ]]; then
     continue
   fi
